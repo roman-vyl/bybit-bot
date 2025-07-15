@@ -1,0 +1,33 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite
+
+# SQLite
+*.sqlite
+*.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+build/
+*.local
+
+# Streamlit
+.streamlit/
+
+
+# VSCode / IDE
+.vscode/
+.idea/
