@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[1]  # backend/
 PROJECT_ROOT = BASE_DIR.parent  # bybit-bot/
 DB_PATH = PROJECT_ROOT / "db" / "market_data.sqlite"
-EMA_FILE = Path("config/ema_periods.txt")
+EMA_FILE = PROJECT_ROOT / "backend" / "config" / "ema_periods.txt"
 
 # --- Загрузка периодов EMA ---
 if not EMA_FILE.exists():

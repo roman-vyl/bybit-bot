@@ -8,18 +8,24 @@ data_backfill.py
 from pathlib import Path
 import sys
 
-sys.path.append(str(Path(__file__).resolve().parents[2]))
-BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
+BASE_DIR = Path(__file__).resolve().parents[2]  # .../backend
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
-PROJECT_ROOT = BASE_DIR.parent  # bybit-bot/
-DB_PATH = PROJECT_ROOT / "db" / "market_data.sqlite"
 
-from pybit.unified_trading import HTTP
-import sqlite3
 from config.timeframes_config import TIMEFRAMES_CONFIG
 
+import sqlite3
+from pybit.unified_trading import HTTP
 
+# 📁 Универсальные пути
+BASE_DIR = Path(__file__).resolve().parents[2]  # .../backend
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
+
+PROJECT_ROOT = BASE_DIR.parent  # .../bybit-bot
+DB_PATH = PROJECT_ROOT / "db" / "market_data.sqlite"
+
+# 🔧 Настройки
 SYMBOL = "BTCUSDT"
 INTERVAL_MAP = {
     "1m": "1",
@@ -33,13 +39,12 @@ INTERVAL_MAP = {
     "1w": "W",
 }
 
+# 🟢 Старт API-сессии
 session = HTTP(testnet=False)  # realnet
-
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
 for tf in TIMEFRAMES_CONFIG.keys():
-
     if tf not in INTERVAL_MAP:
         print(f"⚠️ Таймфрейм {tf} не поддерживается в INTERVAL_MAP, пропущен")
         continue
@@ -55,14 +60,15 @@ for tf in TIMEFRAMES_CONFIG.keys():
 
         for c in candles:
             ts = int(c[0]) // 1000
+            ts_ns = int(c[0]) * 1_000_000
             open_, high, low, close, volume = map(float, c[1:6])
             cursor.execute(
                 f"""
                 INSERT OR IGNORE INTO {table}
-                (symbol, timestamp, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (symbol, timestamp, timestamp_ns, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-                (SYMBOL, ts, open_, high, low, close, volume),
+                (SYMBOL, ts, ts_ns, open_, high, low, close, volume),
             )
 
         conn.commit()
