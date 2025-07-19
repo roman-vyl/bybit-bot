@@ -7,19 +7,34 @@ router = APIRouter()
 
 
 @router.get("/ema")
-def get_ema(
+def get_all_emas(
     symbol: str,
-    timeframe: str,
     start: int,
     end: int,
-) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-    logging.info(
-        f"⚙️ get_ema called with symbol={symbol}, timeframe={timeframe}, start={start}, end={end}"
-    )
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Возвращает EMA для всех таймфреймов из базы.
+    """
+    from backend.config.timeframes_config import TIMEFRAMES_CONFIG
+    import traceback
+    import logging
 
-    candles = get_candles_from_db(symbol, timeframe, start, end)
+    logging.info(f"⚙️ get_all_emas: symbol={symbol}, start={start}, end={end}")
 
-    if not candles:
-        return {"message": "Нет данных за указанный диапазон", "candles": []}
+    results = {}
 
-    return candles
+    for tf in TIMEFRAMES_CONFIG:
+        try:
+            candles = get_candles_from_db(symbol, tf, start, end)
+            if not candles:
+                continue
+
+            ema_keys = [k for k in candles[0] if k.startswith("ema")]
+            filtered = [{k: c[k] for k in ["timestamp"] + ema_keys} for c in candles]
+
+            results[tf] = filtered
+        except Exception as e:
+            logging.error(f"❌ Ошибка при загрузке EMA для {tf}: {e}")
+            traceback.print_exc()
+
+    return results
