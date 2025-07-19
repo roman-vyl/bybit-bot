@@ -51,23 +51,29 @@ def insert_candles_bulk(tf, candles):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     table = f"candles_{tf}"
-    data = [
-        (
-            SYMBOL,
-            c["timestamp"],
-            c["open"],
-            c["high"],
-            c["low"],
-            c["close"],
-            c["volume"],
+    data = []
+    for c in candles:
+        timestamp_ns = c["timestamp"] * 1000 * 1_000_000
+        timestamp_ms = timestamp_ns // 1_000_000
+        timestamp = timestamp_ms // 1000
+        data.append(
+            (
+                SYMBOL,
+                timestamp,
+                timestamp_ns,
+                timestamp_ms,
+                c["open"],
+                c["high"],
+                c["low"],
+                c["close"],
+                c["volume"],
+            )
         )
-        for c in candles
-    ]
     cursor.executemany(
         f"""
         INSERT OR IGNORE INTO {table}
-        (symbol, timestamp, open, high, low, close, volume)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (symbol, timestamp, timestamp_ns, timestamp_ms, open, high, low, close, volume)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         data,
     )

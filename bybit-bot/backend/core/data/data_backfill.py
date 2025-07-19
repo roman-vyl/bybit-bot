@@ -59,16 +59,18 @@ for tf in TIMEFRAMES_CONFIG.keys():
         table = f"candles_{tf}"
 
         for c in candles:
-            ts = int(c[0]) // 1000
             ts_ns = int(c[0]) * 1_000_000
+            ts_ms = ts_ns // 1_000_000
+            ts = ts_ms // 1000
+
             open_, high, low, close, volume = map(float, c[1:6])
             cursor.execute(
                 f"""
                 INSERT OR IGNORE INTO {table}
-                (symbol, timestamp, timestamp_ns, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (symbol, timestamp, timestamp_ns, timestamp_ms, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-                (SYMBOL, ts, ts_ns, open_, high, low, close, volume),
+                (SYMBOL, ts, ts_ns, ts_ms, open_, high, low, close, volume),
             )
 
         conn.commit()
