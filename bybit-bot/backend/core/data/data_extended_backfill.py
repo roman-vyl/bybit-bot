@@ -185,8 +185,8 @@ def insert_candles_bulk(tf, candles):
 
     data = []
     for c in candles:
-        timestamp_ns = c["timestamp"] * 1000 * 1_000_000
-        timestamp_ms = timestamp_ns // 1_000_000
+        timestamp_ms = c["timestamp"] * 1000
+        timestamp_ns = c["timestamp"] * 1_000_000_000
         timestamp = timestamp_ms // 1000
         data.append(
             (

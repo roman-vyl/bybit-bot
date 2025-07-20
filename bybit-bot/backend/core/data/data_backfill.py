@@ -59,9 +59,9 @@ for tf in TIMEFRAMES_CONFIG.keys():
         table = f"candles_{tf}"
 
         for c in candles:
-            ts_ns = int(c[0]) * 1_000_000
-            ts_ms = ts_ns // 1_000_000
+            ts_ms = int(c[0])
             ts = ts_ms // 1000
+            ts_ns = ts_ms * 1_000_000
 
             open_, high, low, close, volume = map(float, c[1:6])
             cursor.execute(
