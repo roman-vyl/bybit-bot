@@ -1,6 +1,6 @@
 import sqlite3
 import pandas as pd
-from typing import List
+from typing import List, Dict, Optional, Any
 from backend.config.timeframes_config import TIMEFRAMES_CONFIG
 from pathlib import Path
 import os
@@ -23,10 +23,64 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 
+def extract_ema_from_candles(
+    candles: List[dict], periods: List[str]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Извлекает EMA данные из загруженных свечей для указанных периодов.
+
+    Args:
+        candles: Список свечей с EMA колонками
+        periods: Список периодов EMA (например, ['20', '50', '200'])
+
+    Returns:
+        Словарь {period: [{'time': timestamp, 'value': ema_value}, ...]}
+    """
+    if not candles:
+        return {}
+
+    result = {}
+
+    for period in periods:
+        ema_key = f"ema{period}"
+        if ema_key in candles[0]:
+            ema_points = []
+            for candle in candles:
+                if candle.get(ema_key) is not None:
+                    ema_points.append(
+                        {"time": candle["timestamp"], "value": float(candle[ema_key])}
+                    )
+            result[period] = ema_points
+
+    return result
+
+
 def get_candles_from_db(
     symbol: str, timeframe: str, start: int, end: int
 ) -> List[dict]:
     """Загружает свечи из SQLite по символу, таймфрейму и диапазону времени."""
+    candles_data, _ = get_candles_with_ema_from_db(
+        symbol, timeframe, start, end, include_ema=False
+    )
+    return candles_data
+
+
+def get_candles_with_ema_from_db(
+    symbol: str,
+    timeframe: str,
+    start: int,
+    end: int,
+    include_ema: bool = False,
+    ema_periods: Optional[List[str]] = None,
+) -> tuple[List[dict], Dict[str, List[Dict[str, Any]]]]:
+    """
+    Загружает свечи из SQLite по символу, таймфрейму и диапазону времени.
+
+    Returns:
+        Tuple (candles_data, ema_data) где:
+        - candles_data: OHLCV данные свечей
+        - ema_data: EMA данные по периодам (если include_ema=True)
+    """
 
     # Валидация timeframe
     if timeframe not in TIMEFRAMES_CONFIG:
@@ -56,7 +110,7 @@ def get_candles_from_db(
 
         if df.empty:
             print("⚠️ DataFrame пуст — свечи не найдены по запросу.")
-            return []
+            return [], {}
 
         print("[DEBUG] SQL df head:\n", df.head(3))
 
@@ -71,8 +125,64 @@ def get_candles_from_db(
         # Преобразование timestamp в int
         df["timestamp"] = df["timestamp"].astype(int)
 
-        return df.to_dict(orient="records")
+        # Конвертируем в список словарей
+        all_data = df.to_dict(orient="records")
+
+        # Разделяем OHLCV и EMA данные
+        ohlcv_cols = [
+            "symbol",
+            "timestamp",
+            "timestamp_ns",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        ]
+        candles_data = []
+
+        for record in all_data:
+            candle_record = {
+                col: record.get(col) for col in ohlcv_cols if col in record
+            }
+            candles_data.append(candle_record)
+
+        # Извлекаем EMA данные если нужно
+        ema_data = {}
+        if include_ema and ema_periods:
+            ema_data = extract_ema_from_candles(all_data, ema_periods)
+
+        return candles_data, ema_data
 
     except Exception as e:
         print(f"Ошибка при выполнении запроса к базе данных: {e}")
-        return []
+        return [], {}
+
+
+def get_ema_data_multi_timeframe(
+    symbol: str, timeframes: List[str], start: int, end: int, periods: List[str]
+) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """
+    Загружает EMA данные для нескольких таймфреймов.
+
+    Returns:
+        {timeframe: {period: [{'time': timestamp, 'value': ema_value}]}}
+    """
+    result = {}
+
+    for tf in timeframes:
+        if tf not in TIMEFRAMES_CONFIG:
+            continue
+
+        try:
+            # Получаем только EMA данные
+            _, ema_data = get_candles_with_ema_from_db(
+                symbol, tf, start, end, include_ema=True, ema_periods=periods
+            )
+            if ema_data:
+                result[tf] = ema_data
+        except Exception as e:
+            print(f"Ошибка при загрузке EMA для {tf}: {e}")
+            continue
+
+    return result
