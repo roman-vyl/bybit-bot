@@ -1,9 +1,13 @@
 @echo off
+REM Запуск frontend (Next.js)
 
-echo 🌐 Запускаем frontend на http://localhost:3000 ...
-cd frontend
-call npm run dev:fast
+cd /d "%~dp0frontend"
+echo Текущая директория: %cd%
 
-echo ✅ Всё запущено. Закройте это окно, если хотите завершить все процессы вручную.
+echo Устанавливаем переменные окружения...
+set NODE_ENV=development
 
-endlocal
+echo Запускаем Next.js dev-сервер...
+call npm run dev
+
+pause
