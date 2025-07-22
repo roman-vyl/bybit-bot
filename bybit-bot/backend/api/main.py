@@ -18,6 +18,6 @@ app.add_middleware(
 )
 
 # Роуты
-app.include_router(candles.router, prefix="/candles", tags=["Candles"])
+app.include_router(candles.router, tags=["Candles"])
 app.include_router(indicators.router, prefix="/indicators", tags=["Indicators"])
 app.include_router(config.router)

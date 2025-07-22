@@ -10,7 +10,7 @@ from datetime import datetime
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("/candles")
 def get_candles(symbol: str, timeframe: str, start: int, end: int):
     try:
         candles = get_candles_from_db(symbol, timeframe, start, end)
@@ -22,7 +22,8 @@ def get_candles(symbol: str, timeframe: str, start: int, end: int):
         )
         print(f"📊 count: {len(candles)}")
 
-        return candles
+        # Возвращаем структуру, ожидаемую фронтом
+        return {"candles": candles, "ema": {}}  # пока пустой объект для EMA данных
     except Exception as e:
         print("❌ Ошибка в get_candles endpoint:")
         traceback.print_exc()
