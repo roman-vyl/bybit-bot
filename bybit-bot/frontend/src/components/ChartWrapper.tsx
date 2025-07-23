@@ -26,39 +26,43 @@ type ChartWrapperProps = {
     timeframe: string;
     symbol: string;
     emaPeriods: string[];
+    availableTimeframes: string[];
 };
 
-export default function ChartWrapper({ timeframe, symbol, emaPeriods }: ChartWrapperProps) {
+export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableTimeframes }: ChartWrapperProps) {
     const { initialCandles, start, end, isLoading, error } = useChartData(symbol, timeframe);
 
     const chartRef = useRef<IChartApi | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
 
-    const [emaConfig, setEmaConfig] = React.useState<EmaDisplayConfig>({
-        enabled: true,
-        periods: emaPeriods.slice(0, 2), // по умолчанию первые два
-        timeframes: [timeframe],
+    // Новая инициализация состояния: только текущий ТФ, все EMA включены
+    const [emaConfig, setEmaConfig] = React.useState<EmaDisplayConfig>(() => {
+        const initial: EmaDisplayConfig = { enabled: true };
+        initial[timeframe] = [...emaPeriods];
+        return initial;
     });
 
     React.useEffect(() => {
-        setEmaConfig(cfg => ({
-            ...cfg,
-            timeframes: [timeframe],
-        }));
-    }, [timeframe]);
+        setEmaConfig(cfg => {
+            const updated = { ...cfg };
+            updated[timeframe] = [...emaPeriods]; // всегда включаем все EMA для нового ТФ
+            return updated;
+        });
+    }, [timeframe, emaPeriods]);
 
-    const { emaData: currentEmaData } = useEmaData(
-        symbol,
-        timeframe,
-        [timeframe],
-        emaConfig.periods,
-        emaConfig.enabled
-    );
+    // Собираем все выбранные ТФ и периоды
+    const selectedTimeframes = Object.keys(emaConfig).filter(tf => tf !== "enabled" && Array.isArray(emaConfig[tf]) && (emaConfig[tf] as string[]).length > 0);
+    const periodsByTf: Record<string, string[]> = {};
+    selectedTimeframes.forEach(tf => {
+        periodsByTf[tf] = Array.isArray(emaConfig[tf]) ? emaConfig[tf] as string[] : [];
+    });
 
+    // Получаем данные EMA для всех выбранных ТФ и периодов
+    // (можно использовать useMultiTimeframeEma, но фильтруем по выбранным периодам)
     const { emaData: multiEmaData } = useMultiTimeframeEma(
         symbol,
-        emaConfig.timeframes,
-        emaConfig.periods,
+        selectedTimeframes,
+        emaPeriods,
         emaConfig.enabled
     );
 
@@ -68,28 +72,17 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods }: ChartWra
         const chart = createChart(containerRef.current, {
             layout: {
                 background: { color: "#111" },
-                textColor: "#ccc",
+                textColor: "#ccc"
             },
-            grid: {
-                vertLines: { color: "#222" },
-                horzLines: { color: "#222" },
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-            },
-            rightPriceScale: {
-                borderColor: "#555",
-            },
-            crosshair: {
-                mode: 0,
-            },
+            grid: { vertLines: { color: "#222" }, horzLines: { color: "#222" } },
+            timeScale: { timeVisible: true, secondsVisible: false },
+            rightPriceScale: { borderColor: "#555" },
+            crosshair: { mode: 0 },
         });
 
         chartRef.current = chart;
 
         const candleSeries = chart.addSeries(CandlestickSeries);
-
         const candleData: CandlestickData<Time>[] = initialCandles.map(candle => ({
             time: candle.timestamp as Time,
             open: candle.open,
@@ -97,29 +90,36 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods }: ChartWra
             low: candle.low,
             close: candle.close,
         }));
-
         candleSeries.setData(candleData);
 
-        if (emaConfig.enabled && currentEmaData[timeframe]) {
-            Object.entries(currentEmaData[timeframe]).forEach(([period, points]) => {
-                const line = chart.addSeries(LineSeries, {
-                    color: EMA_COLORS[period] || "#ffa500",
-                    lineWidth: 2,
+        if (emaConfig.enabled && multiEmaData) {
+            selectedTimeframes.forEach(tf => {
+                const tfData = multiEmaData[tf] || {};
+                const periods = periodsByTf[tf] || [];
+                periods.forEach(period => {
+                    const points = tfData[period];
+                    if (!points) return;
+                    const line = chart.addSeries(LineSeries, {
+                        color: EMA_COLORS[period] || "#ffa500",
+                        lineWidth: 2,
+                    });
+                    const lineData = points
+                        .filter(p => typeof p.value === "number" && isFinite(p.value))
+                        .map(p => ({
+                            time: p.time as Time,
+                            value: p.value,
+                        }));
+                    if (lineData.length > 0) {
+                        line.setData(lineData);
+                    }
                 });
-
-                const lineData = points.map(p => ({
-                    time: p.time as Time,
-                    value: p.value,
-                }));
-
-                line.setData(lineData);
             });
         }
 
         return () => {
             chart.remove();
         };
-    }, [initialCandles, currentEmaData, timeframe]);
+    }, [initialCandles, multiEmaData, emaConfig, selectedTimeframes, periodsByTf]);
 
     if (isLoading) {
         return <div style={{ color: "#ccc" }}>Загрузка графика...</div>;
@@ -134,7 +134,7 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods }: ChartWra
             <EmaControls
                 config={emaConfig}
                 currentTimeframe={timeframe}
-                availableTimeframes={[timeframe]}
+                availableTimeframes={availableTimeframes}
                 onConfigChange={setEmaConfig}
                 emaPeriods={emaPeriods}
             />

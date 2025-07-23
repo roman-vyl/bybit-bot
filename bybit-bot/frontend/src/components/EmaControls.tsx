@@ -11,19 +11,6 @@ type EmaControlsProps = {
     emaPeriods: string[];
 };
 
-const EMA_DISPLAY_RULES: Record<string, string[]> = {
-    "1m": ["1m", "5m"],
-    "5m": ["5m", "15m", "30m"],
-    "15m": ["15m", "30m", "1h"],
-    "30m": ["30m", "1h", "4h"],
-    "1h": ["1h", "4h", "1d"],
-    "4h": ["4h", "6h", "12h", "1d"],
-    "6h": ["6h", "12h", "1d"],
-    "12h": ["12h", "1d", "1w"],
-    "1d": ["1d", "1w"],
-    "1w": ["1w"]
-};
-
 export default function EmaControls({
     config,
     currentTimeframe,
@@ -31,28 +18,42 @@ export default function EmaControls({
     onConfigChange,
     emaPeriods,
 }: EmaControlsProps) {
-    const suggestedTimeframes = EMA_DISPLAY_RULES[currentTimeframe] || [currentTimeframe];
-    const otherTimeframes = availableTimeframes.filter(tf => !suggestedTimeframes.includes(tf));
-
+    // Для текущего ТФ
     const togglePeriod = (period: string) => {
-        const newPeriods = config.periods.includes(period)
-            ? config.periods.filter(p => p !== period)
-            : [...config.periods, period].sort((a, b) => parseInt(a) - parseInt(b));
-
+        const current = Array.isArray(config[currentTimeframe]) ? config[currentTimeframe] as string[] : [];
+        let updated: string[];
+        if (current.includes(period)) {
+            updated = current.filter((p: string) => p !== period);
+        } else {
+            updated = [...current, period];
+        }
         onConfigChange({
             ...config,
-            periods: newPeriods
+            [currentTimeframe]: updated
         });
     };
 
-    const toggleTimeframe = (timeframe: string) => {
-        const newTimeframes = config.timeframes.includes(timeframe)
-            ? config.timeframes.filter(tf => tf !== timeframe)
-            : [...config.timeframes, timeframe];
-
+    // Для чужих ТФ
+    const toggleAllPeriodsForTf = (tf: string) => {
+        const allPeriods = emaPeriods;
+        const current = Array.isArray(config[tf]) ? config[tf] as string[] : [];
+        const enabled = allPeriods.every(period => current.includes(period));
         onConfigChange({
             ...config,
-            timeframes: newTimeframes
+            [tf]: enabled ? [] : [...allPeriods]
+        });
+    };
+    const togglePeriodForTf = (tf: string, period: string) => {
+        const current = Array.isArray(config[tf]) ? config[tf] as string[] : [];
+        let updated: string[];
+        if (current.includes(period)) {
+            updated = current.filter((p: string) => p !== period);
+        } else {
+            updated = [...current, period];
+        }
+        onConfigChange({
+            ...config,
+            [tf]: updated
         });
     };
 
@@ -66,112 +67,77 @@ export default function EmaControls({
     return (
         <div
             style={{
-                padding: "16px",
+                padding: "8px 4px",
                 backgroundColor: "#1a1a1a",
                 border: "1px solid #333",
-                borderRadius: "8px",
-                marginBottom: "16px",
-                color: "#ccc"
+                borderRadius: "6px",
+                marginBottom: "8px",
+                color: "#ccc",
+                display: "flex",
+                flexDirection: "row",
+                gap: "12px",
+                justifyContent: "center",
+                alignItems: "flex-start"
             }}
         >
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "12px"
-                }}
-            >
-                <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                    <input
-                        type="checkbox"
-                        checked={config.enabled}
-                        onChange={toggleEnabled}
-                        style={{ marginRight: "8px" }}
-                    />
-                    <span style={{ fontWeight: "bold" }}>Показать EMA линии</span>
-                </label>
+            {/* Колонка для текущего ТФ */}
+            <div style={{ minWidth: 80, maxWidth: 100 }}>
+                <div style={{ marginBottom: "4px", fontSize: "12px", fontWeight: 500, textAlign: "center" }}>
+                    {currentTimeframe}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {emaPeriods.map(period => {
+                        const checked = Array.isArray(config[currentTimeframe]) && (config[currentTimeframe] as string[]).includes(period);
+                        return (
+                            <label key={period} style={{ display: "flex", alignItems: "center", cursor: "pointer", fontSize: "12px", margin: 0 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => togglePeriod(period)}
+                                    style={{ marginRight: "4px", width: 14, height: 14 }}
+                                />
+                                EMA{period}
+                            </label>
+                        );
+                    })}
+                </div>
             </div>
-
-            {config.enabled && (
-                <>
-                    {/* Периоды EMA для текущего ТФ */}
-                    <div style={{ marginBottom: "16px" }}>
-                        <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: "bold" }}>
-                            EMA периоды для {currentTimeframe}:
+            {/* Колонки для чужих ТФ */}
+            {availableTimeframes.filter(tf => tf !== currentTimeframe).map((tf: string) => {
+                const allChecked = emaPeriods.every(period => Array.isArray(config[tf]) && (config[tf] as string[]).includes(period));
+                return (
+                    <div key={tf} style={{ minWidth: 80, maxWidth: 100 }}>
+                        <div style={{ marginBottom: "4px", fontSize: "12px", fontWeight: 500, textAlign: "center" }}>
+                            {tf}
                         </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {emaPeriods.map(period => (
-                                <label key={period} style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={config.periods.includes(period)}
-                                        onChange={() => togglePeriod(period)}
-                                        style={{ marginRight: "4px" }}
-                                    />
-                                    <span style={{ fontSize: "13px" }}>EMA{period}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Рекомендуемые таймфреймы */}
-                    <div style={{ marginBottom: "16px" }}>
-                        <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: "bold" }}>
-                            Рекомендуемые EMA с других ТФ:
-                        </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {suggestedTimeframes.filter(tf => tf !== currentTimeframe).map(tf => (
-                                <label key={tf} style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={config.timeframes.includes(tf)}
-                                        onChange={() => toggleTimeframe(tf)}
-                                        style={{ marginRight: "4px" }}
-                                    />
-                                    <span
-                                        style={{
-                                            fontSize: "13px",
-                                            color: config.timeframes.includes(tf) ? "#ffa500" : "#999"
-                                        }}
-                                    >
-                                        {tf} EMA
-                                    </span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Дополнительные таймфреймы */}
-                    {otherTimeframes.length > 0 && (
-                        <div>
-                            <div style={{ marginBottom: "8px", fontSize: "14px", fontWeight: "bold" }}>
-                                Дополнительные ТФ:
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                                {otherTimeframes.map(tf => (
-                                    <label key={tf} style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <label style={{ display: "flex", alignItems: "center", cursor: "pointer", fontSize: "12px", margin: 0 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={allChecked}
+                                    onChange={() => toggleAllPeriodsForTf(tf)}
+                                    style={{ marginRight: "4px", width: 14, height: 14 }}
+                                />
+                                Все
+                            </label>
+                            {emaPeriods.map(period => {
+                                const checked = Array.isArray(config[tf]) && (config[tf] as string[]).includes(period);
+                                return (
+                                    <label key={period} style={{ display: "flex", alignItems: "center", cursor: "pointer", fontSize: "12px", margin: 0 }}>
                                         <input
                                             type="checkbox"
-                                            checked={config.timeframes.includes(tf)}
-                                            onChange={() => toggleTimeframe(tf)}
-                                            style={{ marginRight: "4px" }}
+                                            checked={checked}
+                                            onChange={() => togglePeriodForTf(tf, period)}
+                                            style={{ marginRight: "4px", width: 14, height: 14 }}
                                         />
-                                        <span
-                                            style={{
-                                                fontSize: "13px",
-                                                color: config.timeframes.includes(tf) ? "#ffa500" : "#666",
-                                                fontStyle: "italic"
-                                            }}
-                                        >
-                                            {tf} EMA
-                                        </span>
+                                        EMA{period}
                                     </label>
-                                ))}
-                            </div>
+                                );
+                            })}
                         </div>
-                    )}
-                </>
-            )}
+                    </div>
+                );
+            })}
         </div>
     );
 } 

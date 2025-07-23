@@ -21,5 +21,5 @@ TIMEFRAMES_CONFIG = {
     "6h": {"interval_sec": 21600, "allowed_history": None, "initial_candles": 150},
     "12h": {"interval_sec": 43200, "allowed_history": None, "initial_candles": 120},
     "1d": {"interval_sec": 86400, "allowed_history": None, "initial_candles": 100},
-    "1w": {"interval_sec": 604800, "allowed_history": None, "initial_candles": 60},
+    "1w": {"interval_sec": 604800, "allowed_history": None, "initial_candles": 20},
 }

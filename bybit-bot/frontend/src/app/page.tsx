@@ -84,7 +84,7 @@ export default function Home() {
           }}
         >
           {!isLoadingConfig && config && (
-            <ChartWrapper symbol="BTCUSDT" timeframe={timeframe} emaPeriods={config.ema_periods} />
+            <ChartWrapper symbol="BTCUSDT" timeframe={timeframe} emaPeriods={config.ema_periods} availableTimeframes={config.timeframes} />
           )}
 
         </div>

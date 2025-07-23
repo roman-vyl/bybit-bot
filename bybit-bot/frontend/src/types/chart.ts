@@ -34,8 +34,7 @@ export type EmaApiResponse = EmaByTimeframe;
 // Конфигурация для отображения EMA
 export type EmaDisplayConfig = {
     enabled: boolean;
-    periods: string[];
-    timeframes: string[];
+    [timeframe: string]: string[] | boolean;
 };
 
 // Настройки цветов для EMA линий
