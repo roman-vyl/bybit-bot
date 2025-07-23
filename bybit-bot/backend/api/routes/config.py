@@ -15,4 +15,7 @@ def get_config():
     return {
         "timeframes": list(TIMEFRAMES_CONFIG.keys()),
         "ema_periods": ema_periods,
+        "initial_candles": {
+            tf: cfg["initial_candles"] for tf, cfg in TIMEFRAMES_CONFIG.items()
+        },
     }

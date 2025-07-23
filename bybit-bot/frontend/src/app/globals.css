@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Стили для селектора таймфреймов */
+.timeframe-selector {
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.timeframe-selector-title {
+  margin: 0 0 10px 0;
+  color: #ccc;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.timeframe-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timeframe-btn {
+  padding: 8px 16px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-width: 50px;
+}
+
+.timeframe-btn:hover {
+  background: #444;
+  border-color: #666;
+  color: #fff;
+}
+
+.timeframe-btn.active {
+  background: #0066cc;
+  border-color: #0066cc;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(0, 102, 204, 0.3);
+}
+
+.timeframe-btn.active:hover {
+  background: #0052a3;
+  border-color: #0052a3;
+}
