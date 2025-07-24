@@ -1,25 +1,28 @@
 import sys
-import sqlite3
 import os
-from pathlib import Path
+import sqlite3
 import time
+from pathlib import Path
 from pybit.unified_trading import HTTP
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения
+# === Добавляем корень проекта bybit-bot в sys.path ===
+CURRENT_FILE = Path(__file__).resolve()
+PROJECT_ROOT = CURRENT_FILE.parents[3]  # .../bybit-bot/
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# === ВАЖНО: импорт из backend.config ===
+from backend.config.timeframes_config import TIMEFRAMES_CONFIG
+
+# === 🔐 Загрузка переменных окружения ===
 load_dotenv()
 
-sys.path.append(str(Path(__file__).resolve().parents[2]))
-BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
-if str(BASE_DIR) not in sys.path:
-    sys.path.append(str(BASE_DIR))
-from config.timeframes_config import TIMEFRAMES_CONFIG
+SYMBOL = os.getenv("SYMBOL", "BTCUSDT")
+DB_PATH = os.getenv(
+    "DB_PATH", str(PROJECT_ROOT / "backend" / "db" / "market_data.sqlite")
+)
 
-PROJECT_ROOT = BASE_DIR.parent  # bybit-bot/
-
-# Получение переменных из .env
-SYMBOL = os.getenv("SYMBOL", "BTCUSDT")  # Fallback на BTCUSDT если не задано
-DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "db" / "market_data.sqlite"))
+# === 🌐 Настройка таймфреймов для Bybit API ===
 
 INTERVAL_MAP = {
     "1m": "1",
@@ -33,140 +36,144 @@ INTERVAL_MAP = {
     "1w": "W",
 }
 
-session = HTTP(testnet=False)  # realnet
+session = HTTP(testnet=False)
+
+# === Получение меток ===
 
 
 def get_earliest_db_timestamp(tf):
-    """Получить самую раннюю метку времени из БД для таймфрейма"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    table = f"candles_{tf}"
     try:
         cursor.execute(
-            f"SELECT MIN(timestamp) FROM {table} WHERE symbol = ?", (SYMBOL,)
+            f"SELECT MIN(timestamp) FROM candles_{tf} WHERE symbol = ?", (SYMBOL,)
         )
-        result = cursor.fetchone()
-        return result[0] if result and result[0] else None
+        row = cursor.fetchone()
+        earliest_db = row[0] if row and row[0] else None
+        print(f"[DEBUG] earliest_db for {tf} = {earliest_db}")
+        return earliest_db
     except sqlite3.OperationalError:
-        # Таблица не существует
         return None
     finally:
         conn.close()
 
 
-def get_earliest_bybit_timestamp(tf):
-    """Получить самую раннюю доступную свечу на Bybit для символа и таймфрейма"""
-    interval = INTERVAL_MAP[tf]
-    try:
-        # Запрашиваем самые старые данные (limit=1, без указания времени)
-        response = session.get_kline(
-            category="linear",
-            symbol=SYMBOL,
-            interval=interval,
-            limit=1000,  # Берем больше для поиска самых ранних данных
-        )
-        candles = response["result"].get("list", [])
-        if candles:
-            # Bybit возвращает в порядке убывания времени, берем последнюю (самую раннюю)
-            earliest_candle = candles[-1]
-            return int(earliest_candle[0]) // 1000  # Конвертируем ms в seconds
-        return None
-    except Exception as e:
-        print(f"⚠️ Ошибка при получении ранних данных с Bybit: {e}")
-        return None
-
-
-def find_missing_timestamps(tf):
-    """Найти пропущенные временные метки в БД"""
+def get_sorted_timestamps(tf):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    table = f"candles_{tf}"
     try:
-        cursor.execute(f"SELECT timestamp FROM {table} WHERE symbol = ?", (SYMBOL,))
-        rows = cursor.fetchall()
+        cursor.execute(
+            f"SELECT timestamp FROM candles_{tf} WHERE symbol = ? ORDER BY timestamp",
+            (SYMBOL,),
+        )
+        return [row[0] for row in cursor.fetchall()]
     except sqlite3.OperationalError:
-        # Таблица не существует
         return []
     finally:
         conn.close()
 
-    if not rows:
+
+def find_missing_ranges(tf, required_start):
+    timestamps = get_sorted_timestamps(tf)
+    if len(timestamps) < 2:
         return []
 
-    timestamps = sorted({row[0] for row in rows})
     interval = TIMEFRAMES_CONFIG[tf]["interval_sec"]
-    expected = set(range(min(timestamps), max(timestamps) + interval, interval))
-    missing = sorted(expected - set(timestamps))
-    return missing
+    ranges = []
+
+    prev = timestamps[0]
+    for current in timestamps[1:]:
+        if current > prev + interval:
+            gap_start = prev + interval
+            # Если gap_start уходит дальше allowed, корректируем
+            if gap_start < required_start:
+                gap_start = required_start
+            if gap_start <= current - interval:
+                ranges.append((gap_start, current - interval))
+        prev = current
+
+    return ranges
 
 
 def get_missing_gaps(tf):
-    """Определить пропущенные участки в начале и внутри данных"""
-    # Получаем самую раннюю метку в БД
-    earliest_db = get_earliest_db_timestamp(tf)
-    if not earliest_db:
-        print(f"📝 Таблица {tf} пуста или не существует")
-
-        # Обработка случая пустой таблицы
-        earliest_bybit = get_earliest_bybit_timestamp(tf)
-        if not earliest_bybit:
-            print(f"⚠️ Не удалось получить ранние данные с Bybit для {tf}")
-            return []
-
-        now = int(time.time())
-        print(f"🔄 Пустая таблица - загружаем весь диапазон: {earliest_bybit} → {now}")
-        return [(earliest_bybit, now)]
-
-    # Получаем самую раннюю доступную метку на Bybit
-    earliest_bybit = get_earliest_bybit_timestamp(tf)
-    if not earliest_bybit:
-        print(f"⚠️ Не удалось получить ранние данные с Bybit для {tf}")
-        return []
-
-    print(f"📊 {tf}: Bybit earliest={earliest_bybit}, DB earliest={earliest_db}")
+    now = int(time.time())
+    interval = TIMEFRAMES_CONFIG[tf]["interval_sec"]
+    history = TIMEFRAMES_CONFIG[tf].get("allowed_history")
+    if history:
+        required_start = now - history
+    else:
+        # Если не указано — грузим максимально возможную глубину
+        default_years = 5  # по опыту API выдержит до 5 лет на крупных ТФ
+        required_start = now - default_years * 365 * 86400
+        print(f"⚠️ allowed_history не указан для {tf}, используем {default_years} лет")
 
     gaps = []
-    interval = TIMEFRAMES_CONFIG[tf]["interval_sec"]
 
-    # Пропуск в начале (до самых ранних данных в БД)
-    if earliest_bybit < earliest_db:
-        gap_start = earliest_bybit
-        gap_end = earliest_db - interval
+    earliest_db = get_earliest_db_timestamp(tf)
+    if not earliest_db or earliest_db > required_start:
+        gap_start = required_start
+        gap_end = earliest_db - interval if earliest_db else now
         if gap_start <= gap_end:
             gaps.append((gap_start, gap_end))
-            print(f"🔍 Найден пропуск в начале: {gap_start} → {gap_end}")
+            print(f"🔍 Пропуск в начале: {gap_start} → {gap_end}")
 
-    # Пропуски внутри существующих данных
-    missing = find_missing_timestamps(tf)
-    if missing:
-        # Группируем последовательные пропуски в диапазоны
-        current_start = missing[0]
-        current_end = missing[0]
+    internal = find_missing_ranges(tf, required_start)
+    if internal:
+        print(f"🔍 Найдено внутренних пропусков: {len(internal)}")
+        gaps += internal
 
-        for ts in missing[1:]:
-            if ts == current_end + interval:
-                current_end = ts
-            else:
-                gaps.append((current_start, current_end))
-                current_start = ts
-                current_end = ts
-        gaps.append((current_start, current_end))
-
-        print(f"🔍 Найдено пропусков внутри данных: {len(missing)}")
-
+    # 🛡 Гарантируем, что все end в секундах, не миллисекундах
+    gaps = [(start, end if end < 1e12 else end // 1000) for start, end in gaps]
     return gaps
 
 
+# === Работа с API и БД ===
+
+
+def fetch_candles_batch(tf, start_ts, end_ts):
+    interval = INTERVAL_MAP[tf]
+    step = TIMEFRAMES_CONFIG[tf]["interval_sec"] * 200
+    all_candles = []
+    current = start_ts
+
+    while current <= end_ts:
+        # Удалены debug print-ы
+        try:
+            res = session.get_kline(
+                category="linear",
+                symbol=SYMBOL,
+                interval=interval,
+                start=current * 1000,
+                end=(min(end_ts, current + step)) * 1000,
+                limit=200,
+            )
+            candles = res["result"].get("list", [])
+            batch = [
+                {
+                    "timestamp": int(c[0]) // 1000,
+                    "open": float(c[1]),
+                    "high": float(c[2]),
+                    "low": float(c[3]),
+                    "close": float(c[4]),
+                    "volume": float(c[5]),
+                }
+                for c in candles
+            ]
+            all_candles.extend(batch)
+        except Exception as e:
+            print(f"⚠️ API ошибка: {e}")
+        current += step
+        time.sleep(0.05)
+
+    return all_candles
+
+
 def insert_candles_bulk(tf, candles):
-    """Массовая вставка свечей в БД"""
     if not candles:
         return
-
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     table = f"candles_{tf}"
-
-    # Создаем таблицу если не существует
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {table} (
@@ -182,18 +189,15 @@ def insert_candles_bulk(tf, candles):
         )
     """
     )
-
     data = []
     for c in candles:
-        timestamp_ms = c["timestamp"] * 1000
-        timestamp_ns = c["timestamp"] * 1_000_000_000
-        timestamp = timestamp_ms // 1000
+        ts = c["timestamp"]
         data.append(
             (
                 SYMBOL,
-                timestamp,
-                timestamp_ns,
-                timestamp_ms,
+                ts,
+                ts * 1_000_000_000,
+                ts * 1000,
                 c["open"],
                 c["high"],
                 c["low"],
@@ -206,52 +210,14 @@ def insert_candles_bulk(tf, candles):
         INSERT OR IGNORE INTO {table}
         (symbol, timestamp, timestamp_ns, timestamp_ms, open, high, low, close, volume)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+    """,
         data,
     )
     conn.commit()
     conn.close()
 
 
-def fetch_candles_batch(tf, start_ts, end_ts):
-    """Загрузка свечей с Bybit батчами"""
-    interval = INTERVAL_MAP[tf]
-    all_candles = []
-    current = start_ts
-    step = TIMEFRAMES_CONFIG[tf]["interval_sec"] * 200
-
-    while current <= end_ts:
-        try:
-            response = session.get_kline(
-                category="linear",
-                symbol=SYMBOL,
-                interval=interval,
-                start=current * 1000,
-                end=min(end_ts, current + step) * 1000,
-                limit=200,
-            )
-            candles = response["result"].get("list", [])
-            parsed = [
-                {
-                    "timestamp": int(c[0]) // 1000,
-                    "open": float(c[1]),
-                    "high": float(c[2]),
-                    "low": float(c[3]),
-                    "close": float(c[4]),
-                    "volume": float(c[5]),
-                }
-                for c in candles
-            ]
-            all_candles.extend(parsed)
-            print(
-                f"📥 Загружено {len(parsed)} свечей @ {tf} ({current} → {min(end_ts, current + step)})"
-            )
-        except Exception as e:
-            print(f"⚠️  Ошибка API: {e}")
-        current += step
-        time.sleep(0.05)
-
-    return all_candles
+# === Главный алгоритм ===
 
 
 def main():
@@ -259,29 +225,21 @@ def main():
     print(f"💾 БД: {DB_PATH}")
 
     for tf in TIMEFRAMES_CONFIG:
-        print(f"\n📦 Проверка и дозагрузка {tf}...")
-
+        print(f"\n📦 Обработка {tf}...")
         gaps = get_missing_gaps(tf)
         if not gaps:
-            print(f"✅ Пропусков нет в {tf}")
+            print(f"✅ Пропусков нет для {tf} (БД заполнена)")
             continue
 
-        total_loaded = 0
-        for gap_start, gap_end in gaps:
-            print(f"🔄 Загрузка пропуска: {gap_start} → {gap_end}")
+        total = 0
+        for start, end in gaps:
+            print(f"⏳ Загрузка: {start} → {end}")
+            candles = fetch_candles_batch(tf, start, end)
+            insert_candles_bulk(tf, candles)
+            print(f"✅ Загружено: {len(candles)} свечей")
+            total += len(candles)
 
-            # Добавляем небольшой буфер для надежности
-            interval = TIMEFRAMES_CONFIG[tf]["interval_sec"]
-            margin = interval * 10
-            from_ts = gap_start - margin
-            to_ts = gap_end + margin
-
-            candles = fetch_candles_batch(tf, from_ts, to_ts)
-            if candles:
-                insert_candles_bulk(tf, candles)
-                total_loaded += len(candles)
-
-        print(f"✅ Всего загружено {total_loaded} свечей в {tf}")
+        print(f"🧮 Всего загружено: {total} в {tf}")
 
 
 if __name__ == "__main__":

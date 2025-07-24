@@ -84,6 +84,12 @@ def main():
         BASE_DIR / "tools/duplicate_cleaner.py",
     )
 
+    # Шаг 8. Запуск realtime data loader
+    run(
+        "Шаг 8: Запуск realtime data loader",
+        BASE_DIR / "bybit_realtime_data_loader" / "run_bybit_loader.py",
+    )
+
 
 if __name__ == "__main__":
     main()
