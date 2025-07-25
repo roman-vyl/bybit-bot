@@ -8,11 +8,13 @@ import {
     type IChartApi,
     type CandlestickData,
     type Time,
+    LineType, // <--- добавлен импорт
 } from "lightweight-charts";
 import { useChartData } from "@/lib/useChartData";
 import { useEmaData, useMultiTimeframeEma } from "@/lib/useEmaData";
 import { EmaDisplayConfig } from "@/types/chart";
 import EmaControls from "./EmaControls";
+import { TIMEFRAME_TO_SECONDS } from "@/lib/config";
 
 const EMA_COLORS: Record<string, string> = {
     "20": "#ff6b6b",
@@ -34,6 +36,8 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableT
 
     const chartRef = useRef<IChartApi | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    // Храним актуальный видимый диапазон логических индексов
+    const visibleRangeRef = React.useRef<{ from: number; to: number } | null>(null);
 
     // Новая инициализация состояния: только текущий ТФ, все EMA включены
     const [emaConfig, setEmaConfig] = React.useState<EmaDisplayConfig>(() => {
@@ -44,8 +48,9 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableT
 
     React.useEffect(() => {
         setEmaConfig(cfg => {
-            const updated = { ...cfg };
-            updated[timeframe] = [...emaPeriods]; // всегда включаем все EMA для нового ТФ
+            const updated: EmaDisplayConfig = { enabled: true };
+            // Включаем EMA только для текущего timeframe
+            updated[timeframe] = [...emaPeriods];
             return updated;
         });
     }, [timeframe, emaPeriods]);
@@ -90,7 +95,27 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableT
             low: candle.low,
             close: candle.close,
         }));
+        console.debug("[EMA] 🔥 Candles example:", candleData.slice(0, 3));
         candleSeries.setData(candleData);
+        console.debug("[EMA] ✅ Candles set:", candleData.length, "candles");
+
+        // Подписка на изменение видимого диапазона
+        const updateVisibleRange = (range: { from: number; to: number } | null) => {
+            if (range && typeof range.from === "number" && typeof range.to === "number") {
+                visibleRangeRef.current = { from: Number(range.from), to: Number(range.to) };
+            } else {
+                visibleRangeRef.current = null;
+            }
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(updateVisibleRange);
+        // Инициализация текущим диапазоном
+        updateVisibleRange(chart.timeScale().getVisibleLogicalRange());
+
+        console.debug("[EMA] 📦 multiEmaData:", multiEmaData);
+        console.debug("[EMA] ⚙️ emaConfig:", emaConfig);
+        console.debug("[EMA] ⏱ selectedTimeframes:", selectedTimeframes);
+        console.debug("[EMA] 📊 periodsByTf:", periodsByTf);
+        let needFitContent = false;
 
         if (emaConfig.enabled && multiEmaData) {
             selectedTimeframes.forEach(tf => {
@@ -98,10 +123,33 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableT
                 const periods = periodsByTf[tf] || [];
                 periods.forEach(period => {
                     const points = tfData[period];
+                    console.debug(`[EMA] ⏱ Raw EMA timestamps ${tf}-${period}:`, points?.slice(0, 3).map(p => p.time));
+                    console.debug(`[EMA] 🔍 Timeframe: ${tf}, Period: ${period}`);
+                    console.debug(`[EMA] 🔢 Total raw points:`, points?.length ?? 0);
                     if (!points) return;
+                    // 🛡 Защита от артефактов EMA
+                    if (points.length < 5) return;
+
+                    // (Фильтрация по visibleRange отключена по требованию)
+                    console.debug(`[EMA]  Raw points (${points.length}) from ${tf}-${period}:`, points.map((p: any) => p.time));
+
+                    // Проверка на большие гэпы
+                    const timestamps = points.map((p: any) => Number(p.time));
+                    const tfSec = TIMEFRAME_TO_SECONDS[tf];
+                    const hasBigGap = timestamps.some((t, i) => i > 0 && (t - timestamps[i - 1]) > tfSec * 2);
+                    if (hasBigGap) return;
+
+                    // Уникальный priceScaleId для каждой EMA
+                    // Для редких EMA (например, 1h) — ступенчатый тип линии и маркеры
+                    const isSparse = tfSec >= 3600;
+
                     const line = chart.addSeries(LineSeries, {
                         color: EMA_COLORS[period] || "#ffa500",
                         lineWidth: 2,
+                        priceLineVisible: false,
+                        priceScaleId: 'right',
+                        lineType: isSparse ? LineType.WithSteps : LineType.Simple,
+                        crosshairMarkerVisible: isSparse,
                     });
                     const lineData = points
                         .filter(p => typeof p.value === "number" && isFinite(p.value))
@@ -109,14 +157,21 @@ export default function ChartWrapper({ timeframe, symbol, emaPeriods, availableT
                             time: p.time as Time,
                             value: p.value,
                         }));
-                    if (lineData.length > 0) {
-                        line.setData(lineData);
-                    }
+                    console.debug(`[EMA] 🧩 Final lineData for ${tf}-${period}:`, lineData.slice(0, 3));
+                    if (lineData.length === 0) return;
+                    line.setData(lineData);
+                    needFitContent = true;
                 });
             });
         }
 
+        setTimeout(() => {
+            chart.timeScale().fitContent();
+            console.debug("[EMA] 🧭 chart.timeScale().fitContent() called");
+        }, 0);
+
         return () => {
+            chart.timeScale().unsubscribeVisibleLogicalRangeChange(updateVisibleRange);
             chart.remove();
         };
     }, [initialCandles, multiEmaData, emaConfig, selectedTimeframes, periodsByTf]);

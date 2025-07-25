@@ -10,7 +10,9 @@ PYTHON = sys.executable
 
 def run(label, path):
     print(f"\n🔧 {label}")
-    result = subprocess.run([PYTHON, str(path)])
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(BASE_DIR.parent)
+    result = subprocess.run([PYTHON, str(path)], env=env)
     if result.returncode != 0:
         print(f"❌ Ошибка при запуске {path}")
         sys.exit(result.returncode)

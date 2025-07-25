@@ -25,7 +25,9 @@ class CandleHandler:
         try:
             symbol = data["symbol"]
             interval = data["interval"]
-            timestamp = int(data["start"])  # start of candle
+            timestamp = int(
+                data["start"] // 1000
+            )  # start of candle, приводим к секундам
             table = f"candles_{interval}"
 
             if interval not in TIMEFRAMES_CONFIG:

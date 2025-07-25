@@ -236,7 +236,8 @@ def main():
             print(f"⏳ Загрузка: {start} → {end}")
             candles = fetch_candles_batch(tf, start, end)
             insert_candles_bulk(tf, candles)
-            print(f"✅ Загружено: {len(candles)} свечей")
+            if len(candles) > 0:
+                print(f"✅ Загружено: {len(candles)} свечей")
             total += len(candles)
 
         print(f"🧮 Всего загружено: {total} в {tf}")
