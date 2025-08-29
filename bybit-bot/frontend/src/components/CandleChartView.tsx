@@ -56,7 +56,7 @@ export default function CandleChartView({
 
         candleSeries.setData(candles);
 
-        // Добавление всех EMA линий
+        // Добавление всех EMA линий с фильтрацией -1
         Object.entries(emaSeries).forEach(([tf, points]) => {
             const line = chart.addSeries(LineSeries, {
                 color: "#ffa500",
@@ -64,12 +64,13 @@ export default function CandleChartView({
                 lineStyle: tf === timeframe ? 0 : 2,
             });
 
-
-            // Преобразуем массив EmaPoint в формат LineSeriesData
-            const lineData = points.map((p) => ({
-                time: p.time as Time,
-                value: p.value,
-            }));
+            // Фильтруем значения -1 и преобразуем в формат LineSeriesData
+            const lineData = points
+                .filter((p) => p.value >= 0) // Фильтруем -1 и отрицательные значения
+                .map((p) => ({
+                    time: p.time as Time,
+                    value: p.value,
+                }));
 
             line.setData(lineData);
         });

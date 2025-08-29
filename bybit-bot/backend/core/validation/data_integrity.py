@@ -63,6 +63,41 @@ def validate_ohlc_data(df: pd.DataFrame) -> bool:
     return True
 
 
+def validate_continuous_window(df: pd.DataFrame, period: int) -> Tuple[bool, str]:
+    """
+    Проверяет непрерывность данных в скользящем окне для расчета EMA.
+
+    Args:
+        df: DataFrame с данными
+        period: размер окна для проверки
+
+    Returns:
+        Tuple[bool, str]: (результат валидации, сообщение)
+    """
+    if df.empty:
+        return False, "DataFrame пуст"
+
+    if "close" not in df.columns:
+        return False, "Отсутствует колонка close"
+
+    # Оптимизация: проверяем только если есть NULL
+    if not df["close"].isna().any():
+        return True, "OK"
+
+    # Проверяем непрерывность в окне
+    continuous_check = df["close"].notna().rolling(window=period).sum()
+
+    if (continuous_check < period).any():
+        broken = (continuous_check < period).sum()
+        total_windows = len(continuous_check.dropna())
+        return (
+            False,
+            f"Обнаружено {broken}/{total_windows} окон с недостаточными данными",
+        )
+
+    return True, "OK"
+
+
 def validate_for_indicator(
     df: pd.DataFrame, period: int, tf_sec: int
 ) -> Tuple[bool, str]:
@@ -95,6 +130,11 @@ def validate_for_indicator(
             return False, "Обнаружены пропуски в данных"
     except ValueError as e:
         return False, f"Ошибка проверки пропусков: {str(e)}"
+
+    # Проверка на непрерывные окна close
+    is_continuous, reason = validate_continuous_window(df, period)
+    if not is_continuous:
+        return False, f"Непрерывность close: {reason}"
 
     return True, "OK"
 

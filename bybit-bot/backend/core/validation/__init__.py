@@ -8,6 +8,7 @@ from .data_integrity import (
     validate_for_indicator,
     has_gaps,
     validate_ohlc_data,
+    validate_continuous_window,
     quick_check,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "validate_for_indicator",
     "has_gaps",
     "validate_ohlc_data",
+    "validate_continuous_window",
     "quick_check",
 ]

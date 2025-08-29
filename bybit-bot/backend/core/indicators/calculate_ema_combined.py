@@ -29,7 +29,7 @@ if not EMA_PERIODS:
 
 
 def calculate_ema(df: pd.DataFrame, periods: List[int], tf_sec: int) -> pd.DataFrame:
-    """Расчёт EMA для указанных периодов"""
+    """Расчёт EMA для указанных периодов с улучшенной валидацией"""
     for period in periods:
         col = f"ema{period}"
         if col not in df.columns:
@@ -39,12 +39,14 @@ def calculate_ema(df: pd.DataFrame, periods: List[int], tf_sec: int) -> pd.DataF
         if df_null.empty:
             continue
 
+        # Улучшенная валидация с проверкой непрерывности
         is_valid, reason = validate_for_indicator(df_null, period, tf_sec)
         if not is_valid:
             print(f"⚠ EMA{period}: {reason} — пишем -1")
             df.loc[df_null.index, col] = -1
             continue
 
+        # Рассчитываем EMA только для валидных данных
         ema_series = ta.ema(df_null["close"], length=period)
         if ema_series.dropna().shape[0] < period:
             print(f"⚠ EMA{period}: нестабильная EMA — пишем -1")
@@ -127,7 +129,7 @@ def run_ema_incremental(symbol: str, timeframe: str):
             print(f"   ⏭ EMA уже рассчитаны: {symbol} {timeframe}")
             return
 
-        # Расчёт EMA
+        # Расчёт EMA с улучшенной валидацией
         tf_sec = TIMEFRAMES_CONFIG[timeframe]["interval_sec"]
         df_to_update = calculate_ema(df_to_update, EMA_PERIODS, tf_sec)
 

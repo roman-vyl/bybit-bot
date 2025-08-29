@@ -28,6 +28,7 @@ def extract_ema_from_candles(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Извлекает EMA данные из загруженных свечей для указанных периодов.
+    Фильтрует значения -1 (маркеры проблемных данных).
 
     Args:
         candles: Список свечей с EMA колонками
@@ -46,9 +47,11 @@ def extract_ema_from_candles(
         if ema_key in candles[0]:
             ema_points = []
             for candle in candles:
-                if candle.get(ema_key) is not None:
+                ema_value = candle.get(ema_key)
+                # Фильтруем None, -1 и отрицательные значения
+                if ema_value is not None and ema_value >= 0:
                     ema_points.append(
-                        {"time": candle["timestamp"], "value": float(candle[ema_key])}
+                        {"time": candle["timestamp"], "value": float(ema_value)}
                     )
             result[period] = ema_points
 
