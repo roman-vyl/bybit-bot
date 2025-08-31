@@ -49,19 +49,11 @@ def main():
         BASE_DIR / "core/data/data_extended_backfill.py",
     )
 
-    # Шаг 3. Пересчёт EMA
-    if current_hash != previous_hash:
-        print("🔁 Конфиги изменились — выполняем ПОЛНЫЙ пересчёт EMA")
-        run(
-            "Шаг 3: Полный пересчёт EMA",
-            BASE_DIR / "core/indicators/calculate_ema_combined.py",
-        )
-        config_hash_file.write_text(current_hash)
-    else:
-        run(
-            "Шаг 3: Инкрементальный пересчёт EMA",
-            BASE_DIR / "core/indicators/calculate_ema_combined.py",
-        )
+    # Шаг 3. Проверка и пересчёт EMA через DIM
+    print("🔍 Шаг 3: Проверка EMA и пересчёт дыр")
+    run(
+        "Шаг 3: Запуск DIM для поиска и фикса дыр в EMA", BASE_DIR / "core/dim/ezdim.py"
+    )
 
     # Шаг 4. Обновление структуры таблиц
     run("Шаг 4: Синхронизация схемы таблиц", BASE_DIR / "tools/update_db_structure.py")

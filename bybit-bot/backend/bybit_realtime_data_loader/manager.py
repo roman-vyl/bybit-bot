@@ -19,9 +19,7 @@ class Manager:
 
     def _on_candle(self, candle: dict):
         self.candle_handler.handle_candle(candle)
-        self.indicator_trigger.trigger(
-            symbol=candle["symbol"], timeframe=candle["interval"]
-        )
+        self.indicator_trigger.trigger_candle(candle)
 
     def run(self):
         ws = WSClient(

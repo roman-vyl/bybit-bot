@@ -8,6 +8,8 @@ import sqlite3
 import logging
 from typing import Dict
 from backend.config.timeframes_config import TIMEFRAMES_CONFIG
+from backend.core.dim.ezdim import EzDIM
+
 
 logger = logging.getLogger(__name__)
 DB_PATH = "db/market_data.sqlite"
@@ -33,6 +35,30 @@ class CandleHandler:
             if interval not in TIMEFRAMES_CONFIG:
                 logger.warning(f"⏭ Неизвестный интервал: {interval}")
                 return
+
+            # Создаем DataFrame для валидации
+            import pandas as pd
+
+            df = pd.DataFrame(
+                [
+                    {
+                        "timestamp": timestamp,
+                        "open": float(data["open"]),
+                        "high": float(data["high"]),
+                        "low": float(data["low"]),
+                        "close": float(data["close"]),
+                        "volume": float(data["volume"]),
+                    }
+                ]
+            )
+
+            # Валидация данных перед сохранением
+            EzDIM.preflight(
+                df,
+                required_cols=["timestamp", "open", "high", "low", "close"],
+                min_rows=1,
+                tf_sec=TIMEFRAMES_CONFIG[interval]["interval_sec"],
+            )
 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()

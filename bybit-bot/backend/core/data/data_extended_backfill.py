@@ -13,6 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # === ВАЖНО: импорт из backend.config ===
 from backend.config.timeframes_config import TIMEFRAMES_CONFIG
+from backend.core.dim.ezdim import EzDIM
 
 # === 🔐 Загрузка переменных окружения ===
 load_dotenv()
@@ -164,6 +165,20 @@ def fetch_candles_batch(tf, start_ts, end_ts):
             print(f"⚠️ API ошибка: {e}")
         current += step
         time.sleep(0.05)
+
+    # Создаем DataFrame для валидации
+    import pandas as pd
+
+    df = pd.DataFrame(all_candles)
+
+    # Валидация данных перед возвратом
+    if not df.empty:
+        EzDIM.preflight(
+            df,
+            required_cols=["timestamp", "open", "high", "low", "close"],
+            min_rows=1,
+            tf_sec=TIMEFRAMES_CONFIG[tf]["interval_sec"],
+        )
 
     return all_candles
 

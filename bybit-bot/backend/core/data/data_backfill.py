@@ -13,6 +13,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
 from config.timeframes_config import TIMEFRAMES_CONFIG
+from backend.core.dim.ezdim import EzDIM
 
 import sqlite3
 from pybit.unified_trading import HTTP
@@ -57,6 +58,39 @@ for tf in TIMEFRAMES_CONFIG.keys():
         )
         candles = response["result"]["list"]
         table = f"candles_{tf}"
+
+        # Формируем DataFrame для валидации
+        df_data = []
+        for c in candles:
+            ts_ms = int(c[0])
+            ts = ts_ms // 1000
+            ts_ns = ts_ms * 1_000_000
+
+            open_, high, low, close, volume = map(float, c[1:6])
+            df_data.append(
+                {
+                    "timestamp": ts,
+                    "timestamp_ns": ts_ns,
+                    "timestamp_ms": ts_ms,
+                    "open": open_,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "volume": volume,
+                }
+            )
+
+        import pandas as pd
+
+        df = pd.DataFrame(df_data)
+
+        # Валидация данных перед сохранением
+        EzDIM.preflight(
+            df,
+            required_cols=["timestamp", "open", "high", "low", "close"],
+            min_rows=1,
+            tf_sec=TIMEFRAMES_CONFIG[tf]["interval_sec"],
+        )
 
         for c in candles:
             ts_ms = int(c[0])
